@@ -131,55 +131,6 @@ const resetScroll = () => {
 const qs = (sel, el = document) => el.querySelector(sel);
 const qsa = (sel, el = document) => el.querySelectorAll(sel);
 
-const waitForImages = () => {
-  return new Promise((resolve) => {
-    const images = Array.from(document.querySelectorAll('img'));
-    if (images.length === 0) {
-      resolve();
-      return;
-    }
-    let loaded = 0;
-    let errored = 0;
-    const total = images.length;
-    let resolved = false;
-    const checkComplete = () => {
-      if (!resolved && loaded + errored === total) {
-        resolved = true;
-        resolve();
-      }
-    };
-    images.forEach((img) => {
-      if (img.complete && (img.naturalWidth > 0 || img.naturalHeight > 0)) {
-        loaded++;
-      } else if (img.complete) {
-        errored++;
-      } else {
-        const onLoad = () => {
-          loaded++;
-          img.removeEventListener('load', onLoad);
-          img.removeEventListener('error', onError);
-          checkComplete();
-        };
-        const onError = () => {
-          errored++;
-          img.removeEventListener('load', onLoad);
-          img.removeEventListener('error', onError);
-          checkComplete();
-        };
-        img.addEventListener('load', onLoad);
-        img.addEventListener('error', onError);
-      }
-    });
-    checkComplete();
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        resolve();
-      }
-    }, 3000);
-  });
-};
-
 /* ==============================================
    Favicon Injection
 ============================================== */
@@ -385,6 +336,8 @@ function animateSplitText(element, options = {}) {
   }
   if (element._splitTextInstance && !isOut) { element._splitTextInstance.revert(); element._splitTextInstance = null; }
   gsap.set(element, { overflow: "visible", opacity: 1, visibility: "visible" });
+  // Force layout recalculation to ensure consistent line breaks
+  void element.offsetHeight;
   const split = new SplitText(element, { type, charsClass: "char", linesClass: "line", reduceWhiteSpace: false, autoSplit: true });
   element._splitTextInstance = split;
   const target = type === "chars" ? split.chars : split.lines;
@@ -409,14 +362,31 @@ function cleanupSplitText(elements) {
 }
 
 function animateHeadings() {
-  setTimeout(() => {
-    qsa(ANIMATED_ELEMENTS_SELECTOR).forEach((element) => {
-      if (EXCLUDED_CONTAINERS.some(sel => element.closest(sel))) return;
-      const scrollTriggerConfig = { trigger: element, start: HEADINGS_SCROLL_TRIGGER_CONFIG.start, end: "bottom 100%", toggleActions: HEADINGS_SCROLL_TRIGGER_CONFIG.toggleActions };
-      const linesTween = animateSplitText(element, { type: "lines", direction: "in", scrollTrigger: scrollTriggerConfig });
-      if (linesTween?.scrollTrigger) element._linesScrollTrigger = linesTween.scrollTrigger;
+  const runSplit = () => {
+    requestAnimationFrame(() => {
+      qsa(ANIMATED_ELEMENTS_SELECTOR).forEach((element) => {
+        if (EXCLUDED_CONTAINERS.some(sel => element.closest(sel))) return;
+        // Force layout recalculation before splitting to ensure consistent line breaks
+        void element.offsetHeight;
+        const scrollTriggerConfig = { trigger: element, start: HEADINGS_SCROLL_TRIGGER_CONFIG.start, end: "bottom 100%", toggleActions: HEADINGS_SCROLL_TRIGGER_CONFIG.toggleActions };
+        const linesTween = animateSplitText(element, { type: "lines", direction: "in", scrollTrigger: scrollTriggerConfig });
+        if (linesTween?.scrollTrigger) element._linesScrollTrigger = linesTween.scrollTrigger;
+      });
+      // Refresh ScrollTrigger after all ScrollTriggers are created
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+      });
     });
-  }, 0);
+  };
+  
+  // Wait for fonts to load to ensure consistent line breaks
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(runSplit).catch(() => {
+      setTimeout(runSplit, 100);
+    });
+  } else {
+    setTimeout(runSplit, 100);
+  }
 }
 
 /* ==============================================
@@ -653,6 +623,9 @@ function initRoadProgressBar() {
       d.forEach((dot, idx) => dot.classList.toggle('active', idx === li ? (p >= 0.95 || ic >= pos[idx]) : ic >= pos[idx]));
     }
   });
+  requestAnimationFrame(() => {
+    ScrollTrigger.refresh();
+  });
 }
 
 /* ==============================================
@@ -723,6 +696,10 @@ function initCubeAnimations() {
       const cc = pw.querySelectorAll('.cube-container-section')[i];
       if (cc) cc.style.top = `${s.offsetTop}px`;
     });
+    // Refresh ScrollTrigger after cubes are positioned
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
   });
 }
 
@@ -748,6 +725,13 @@ function initVisibilityAnimation() {
     document.documentElement.style.height = ohh;
     if (window.lenisInstance) { window.lenisInstance.start(); window.lenisInstance.scrollTo(0, { immediate: true }); }
     resetScroll();
+    // Refresh ScrollTrigger after scroll is unlocked and layout stabilizes
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+      });
+    });
   };
   // Show content immediately, unlock scroll after short delay
   gsap.set("section, .hero, footer", { opacity: 1, visibility: "visible" });
@@ -762,7 +746,11 @@ function initVisibilityAnimation() {
       const iy = window.innerHeight;
       gsap.set(ve, { y: iy, scale: 1.3, transformOrigin: "50% 0%", force3D: true, willChange: 'transform' });
       ScrollTrigger.refresh();
-      gsap.to(ve, { y: 0, duration: 1, scale: 1, ease: window.EASING.main, delay: 0, immediateRender: false, force3D: true, transformOrigin: "50% 0%", onUpdate: () => ScrollTrigger.refresh() });
+      gsap.to(ve, { y: 0, duration: 1, scale: 1, ease: window.EASING.main, delay: 0, immediateRender: false, force3D: true, transformOrigin: "50% 0%", onUpdate: () => ScrollTrigger.refresh(), onComplete: () => {
+        requestAnimationFrame(() => {
+          ScrollTrigger.refresh();
+        });
+      } });
     }
   }
 }
@@ -938,22 +926,14 @@ function cleanupAllSessions() {
    Reinitialize all page functions
 ============================================== */
 
-async function reinitializePageFunctions(skipVisibilityAnimation = false) {
+function reinitializePageFunctions(skipVisibilityAnimation = false) {
   cleanupAllSessions();
   initFavicon();
   // Convert logos asynchronously without blocking
   convertLogoToInlineSVG().catch(() => {});
   autoAssignSectionClasses();
-  
-  // Wait for all images to load before initializing scroll triggers
-  await waitForImages();
-  
-  // Wait additional frame to ensure layout is stable
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  
-  ScrollTrigger.refresh();
+  // animateHeadings now waits for fonts to load internally
   animateHeadings();
-  requestAnimationFrame(() => ScrollTrigger.refresh());
   initTestimonials();
   initNumbersCarousel();
   initTeamSlider();
@@ -969,6 +949,13 @@ async function reinitializePageFunctions(skipVisibilityAnimation = false) {
   if (!skipVisibilityAnimation) {
     initVisibilityAnimation();
   }
+  // Final refresh after all initialization is complete
+  requestAnimationFrame(() => {
+    ScrollTrigger.refresh();
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
+  });
 }
 
 window.reinitializePageFunctions = reinitializePageFunctions;
@@ -1185,8 +1172,15 @@ async function pageTransition(url) {
     resetScroll();
     if (lenisInstance) lenisInstance.start();
     cleanupAllSessions();
-    if (window.reinitializePageFunctions) await window.reinitializePageFunctions();
+    if (window.reinitializePageFunctions) window.reinitializePageFunctions();
     initPageTransitions();
+    // Ensure ScrollTrigger captures everything after page transition
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+      });
+    });
     
     // After reinitialize, scroll to section if there's a hash
     if (hash) {
@@ -1610,8 +1604,8 @@ function initResizeHandler() {
     previousWidth = currentWidth;
     const scrollY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
     clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(async () => {
-      await reinitializePageFunctions(true);
+    resizeTimeout = setTimeout(() => {
+      reinitializePageFunctions(true);
       requestAnimationFrame(() => {
         window.scrollTo(0, scrollY);
         if (lenisInstance) {
@@ -1627,7 +1621,7 @@ function initResizeHandler() {
    Main Initialization - window.onload
 ============================================== */
 
-window.onload = async function () {
+window.onload = function () {
   resetScroll();
   gsap.registerPlugin(SplitText, ScrollTrigger);
   initFavicon();
@@ -1635,17 +1629,9 @@ window.onload = async function () {
   // Convert logos asynchronously without blocking page load
   convertLogoToInlineSVG().catch(() => {});
   initHeaderAnimation();
-  
-  // Wait for all images to load before initializing scroll triggers
-  await waitForImages();
-  
-  // Wait additional frame to ensure layout is stable
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  
+  // animateHeadings now waits for fonts to load internally, no need for setTimeout
   resetScroll();
   animateHeadings();
-  ScrollTrigger.refresh();
-  
   initTestimonials();
   initNumbersCarousel();
   initTeamSlider();
@@ -1658,9 +1644,17 @@ window.onload = async function () {
   initGridOverlayToggle();
   initRoadProgressBar();
   initCubeAnimations();
-  initVisibilityAnimation();
   initFrameCorners();
   initResizeHandler();
+  initVisibilityAnimation();
+  // Final refresh after all initialization - will also be called by initVisibilityAnimation
+  // but adding here as safety net for when skipVisibilityAnimation is used
+  requestAnimationFrame(() => {
+    ScrollTrigger.refresh();
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
+  });
 };
 
 /* ==============================================
@@ -1678,12 +1672,22 @@ window.addEventListener("load", () => {
   requestAnimationFrame(raf);
   lenisInstance.on('scroll', ScrollTrigger.update);
   window.lenisInstance = lenisInstance;
-  ScrollTrigger.refresh();
+  requestAnimationFrame(() => {
+    ScrollTrigger.refresh();
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
+  });
   if (!isScrollLocked) {
     setTimeout(() => {
       resetScroll();
       lenisInstance.scrollTo(0, { immediate: true });
-      ScrollTrigger.refresh();
+      requestAnimationFrame(() => {
+        ScrollTrigger.refresh();
+        requestAnimationFrame(() => {
+          ScrollTrigger.refresh();
+        });
+      });
     }, 100);
   }
 });
