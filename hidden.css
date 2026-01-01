@@ -1,0 +1,77 @@
+section, .hero, .header, footer {
+  visibility: hidden;
+  opacity: 0;
+}
+
+section {
+  opacity: 0;
+}
+
+@media (max-width: 1200px) {
+  .header::before {
+    opacity: 0;
+  }
+}
+
+.numbers-set {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.numbers-carousel:not(:has(.numbers-set.active)) .numbers-set:first-child {
+  opacity: 1;
+  visibility: visible;
+}
+
+.numbers-set.active {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.faq-answer {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Hide split text elements on initial load to prevent flash */
+/* Exclude elements inside testimonial-card and numbers-set as they are handled separately */
+.audit-list,
+section h1, section h2, section h3, section h4, section h5, section h6,
+section p,
+.indicator,
+.text-link,
+.reveal-link {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Ensure testimonial-card and numbers-set elements are visible (they have their own animations) */
+.testimonial-card h1,
+.testimonial-card h2,
+.testimonial-card h3,
+.testimonial-card h4,
+.testimonial-card h5,
+.testimonial-card h6,
+.testimonial-card p,
+.testimonial-card .indicator,
+.testimonial-card .text-link,
+.testimonial-card .reveal-link,
+.numbers-set h1,
+.numbers-set h2,
+.numbers-set h3,
+.numbers-set h4,
+.numbers-set h5,
+.numbers-set h6,
+.numbers-set p,
+.numbers-set .indicator,
+.numbers-set .text-link,
+.numbers-set .reveal-link {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.w-webflow-badge,.w-webflow-badge > img {
+  display: none!important;
+}
+
