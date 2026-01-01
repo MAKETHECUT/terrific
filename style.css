@@ -60,8 +60,8 @@
   --color-navy: #363c9f;
   --color-pink: #f5417f;
   --primary-font: 'Inter', sans-serif;
-  --secondary-font: 'Baseneue', sans-serif;
-  --tertiary-font: 'Montech', sans-serif;
+  --secondary-font: Baseneue, Arial, sans-serif!important;
+  --tertiary-font: Montech, Arial, sans-serif!important;
   --underline-motion: fadein 2.5s var(--ease-standard);
   --cta-motion-easing: var(--ease-standard);
   --motion-duration: 0.6s;
