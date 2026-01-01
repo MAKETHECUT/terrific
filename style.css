@@ -3274,6 +3274,10 @@ section:has(.footer-badges) {
   object-fit: contain;
 }
 
+.dark-mode .scroll-to-top {
+  filter: invert(1)!important;
+}
+
 .footer-logo {
   display: flex;
   justify-content: flex-end;
